@@ -1,86 +1,133 @@
-
-from datetime import datetime, timezone
 from uuid import uuid4
 
 from fastapi import HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import delete, select
 
+from app.database import SessionLocal
+from app.models import Document, SharingPermission
 from app.security import Role
-
-
-# Temporary in-memory document metadata.
-documents = {}
 
 
 class DocumentCreate(BaseModel):
     filename: str = Field(min_length=1, max_length=255)
-    content_type: str = Field(min_length=1, max_length=100)
-    size_bytes: int = Field(gt=0)
+    content_type: str = "application/octet-stream"
+    size_bytes: int = Field(ge=0)
+
+
+def _document_dict(document: Document) -> dict:
+    return {
+        "id": document.id,
+        "owner_id": document.owner_id,
+        "filename": document.filename,
+        "content_type": document.content_type,
+        "size_bytes": document.size_bytes,
+        "storage_path": document.storage_path,
+        "created_at": (
+            document.created_at.isoformat()
+            if document.created_at else None
+        ),
+    }
 
 
 def create_document(
     owner_id: str,
-    user_role: Role,
+    user_role,
     filename: str,
     content_type: str,
     size_bytes: int,
+    storage_path: str | None = None,
 ):
-    if user_role != Role.OWNER:
+    role = user_role.value if isinstance(user_role, Role) else user_role
+
+    if role != Role.OWNER.value:
         raise HTTPException(
             status_code=403,
-            detail="Only owners can upload documents.",
+            detail="Only document owners can create documents.",
         )
 
-    if not filename.strip():
-        raise HTTPException(
-            status_code=400,
-            detail="Filename cannot be empty.",
+    document_id = str(uuid4())
+
+    with SessionLocal() as db:
+        document = Document(
+            id=document_id,
+            owner_id=owner_id,
+            filename=filename,
+            content_type=content_type,
+            size_bytes=size_bytes,
+            storage_path=storage_path or f"{owner_id}/{document_id}",
         )
 
-    if size_bytes <= 0:
-        raise HTTPException(
-            status_code=400,
-            detail="Document size must be greater than zero.",
-        )
+        db.add(document)
+        db.commit()
+        db.refresh(document)
 
-    document = {
-        "id": str(uuid4()),
-        "owner_id": owner_id,
-        "filename": filename,
-        "content_type": content_type,
-        "size_bytes": size_bytes,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-
-    documents[document["id"]] = document
-    return document
+        return _document_dict(document)
 
 
 def list_owner_documents(owner_id: str):
-    return [
-        document
-        for document in documents.values()
-        if document["owner_id"] == owner_id
-    ]
+    with SessionLocal() as db:
+        documents = db.scalars(
+            select(Document)
+            .where(Document.owner_id == owner_id)
+            .order_by(Document.created_at.desc())
+        ).all()
+
+        return [_document_dict(doc) for doc in documents]
 
 
 def get_document(document_id: str, owner_id: str):
-    document = documents.get(document_id)
-
-    if not document or document["owner_id"] != owner_id:
-        raise HTTPException(
-            status_code=404,
-            detail="Document not found.",
+    with SessionLocal() as db:
+        document = db.scalar(
+            select(Document).where(
+                Document.id == document_id,
+                Document.owner_id == owner_id,
+            )
         )
 
-    return document
+        if not document:
+            raise HTTPException(
+                status_code=404,
+                detail="Document not found.",
+            )
+
+        return _document_dict(document)
+
 
 
 def delete_document(document_id: str, owner_id: str):
-    document = get_document(document_id, owner_id)
-    del documents[document_id]
+    with SessionLocal() as db:
+        document = db.scalar(
+            select(Document).where(
+                Document.id == document_id,
+                Document.owner_id == owner_id,
+            )
+        )
 
-    return {
-        "message": "Document metadata deleted successfully.",
-        "document_id": document["id"],
-    }
+        if not document:
+            raise HTTPException(
+                status_code=404,
+                detail="Document not found.",
+            )
+
+        # Import here to avoid a module-level circular import.
+        from app.storage import delete_object
+
+        # Delete the actual file before changing database records.
+        if document.storage_path:
+            delete_object(document.storage_path)
+
+        # Delete related shares before deleting the document record.
+        db.execute(
+            delete(SharingPermission).where(
+                SharingPermission.document_id == document_id
+            )
+        )
+
+        db.delete(document)
+        db.commit()
+
+        return {
+            "message": "Document and stored file deleted successfully.",
+            "document_id": document_id,
+        }

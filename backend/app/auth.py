@@ -1,23 +1,35 @@
 
+import os
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import jwt
-from pwdlib import PasswordHash
+from dotenv import load_dotenv
 from fastapi import HTTPException, status
 from pydantic import BaseModel, EmailStr
+from pwdlib import PasswordHash
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
+from app.database import SessionLocal
+from app.models import User
 from app.security import Role
 
-# DEVELOPMENT ONLY: replace with an environment variable before deployment.
-SECRET_KEY = "development-only-change-this-secret-key"
+load_dotenv()
+
+SECRET_KEY = os.getenv("TRUSTVAULT_JWT_SECRET")
+if not SECRET_KEY or len(SECRET_KEY) < 32:
+    raise RuntimeError(
+        "TRUSTVAULT_JWT_SECRET is missing or too short. "
+        "Set a long random secret in backend/.env."
+    )
+
 ALGORITHM = "HS256"
 TOKEN_EXPIRE_MINUTES = 30
-
 password_hash = PasswordHash.recommended()
 
-# Temporary in-memory user storage.
-# All accounts will disappear when the server restarts.
+# Temporary compatibility cache for modules not yet migrated to PostgreSQL.
+# PostgreSQL is the source of truth for authentication.
 users = {}
 
 
@@ -32,14 +44,19 @@ class LoginRequest(BaseModel):
     password: str
 
 
-def create_user(name: str, email: str, password: str):
-    email = email.lower()
+def _user_to_dict(user: User) -> dict:
+    return {
+        "id": user.id,
+        "name": user.name,
+        "email": user.email,
+        "password_hash": user.password_hash,
+        "role": Role(user.role),
+        "active": user.active,
+    }
 
-    if email in users:
-        raise HTTPException(
-            status_code=400,
-            detail="An account with this email already exists.",
-        )
+
+def create_user(name: str, email: str, password: str):
+    email = email.strip().lower()
 
     if len(password) < 8:
         raise HTTPException(
@@ -47,42 +64,87 @@ def create_user(name: str, email: str, password: str):
             detail="Password must contain at least 8 characters.",
         )
 
-    user = {
-        "id": str(uuid4()),
-        "name": name,
-        "email": email,
-        "password_hash": password_hash.hash(password),
-        "role": Role.VIEWER,
-        "active": True,
-    }
+    with SessionLocal() as db:
+        existing = db.scalar(select(User).where(User.email == email))
+        if existing:
+            raise HTTPException(
+                status_code=400,
+                detail="An account with this email already exists.",
+            )
 
-    users[email] = user
-    return user
+        user = User(
+            name=name.strip(),
+            email=email,
+            password_hash=password_hash.hash(password),
+            role=Role.VIEWER.value,
+            active=True,
+        )
+        db.add(user)
+
+        try:
+            db.commit()
+            db.refresh(user)
+        except IntegrityError:
+            db.rollback()
+            raise HTTPException(
+                status_code=400,
+                detail="An account with this email already exists.",
+            )
+
+        result = _user_to_dict(user)
+        users[email] = result
+        return result
+
 
 def create_development_owner(name: str, email: str, password: str):
+    email = email.strip().lower()
+
+    with SessionLocal() as db:
+        existing = db.scalar(select(User).where(User.email == email))
+
+        if existing:
+            existing.role = Role.OWNER.value
+            db.commit()
+            db.refresh(existing)
+            result = _user_to_dict(existing)
+            users[email] = result
+            return result
+
     user = create_user(name, email, password)
-    user["role"] = Role.OWNER
-    return user
+
+    with SessionLocal() as db:
+        owner = db.get(User, user["id"])
+        owner.role = Role.OWNER.value
+        db.commit()
+        db.refresh(owner)
+        result = _user_to_dict(owner)
+        users[email] = result
+        return result
 
 
 def authenticate_user(email: str, password: str):
-    user = users.get(email.lower())
+    email = email.strip().lower()
 
-    if not user or not password_hash.verify(
-        password, user["password_hash"]
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password.",
-        )
+    with SessionLocal() as db:
+        user = db.scalar(select(User).where(User.email == email))
 
-    if not user["active"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="This account is disabled.",
-        )
+        if not user or not password_hash.verify(
+            password, user.password_hash
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid email or password.",
+            )
 
-    return user
+        if not user.active:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="This account is disabled.",
+            )
+
+        result = _user_to_dict(user)
+        users[email] = result
+        return result
 
 
 def create_access_token(user: dict):
@@ -108,18 +170,24 @@ def get_current_user_from_token(token: str):
         )
         user_id = payload.get("sub")
 
-        user = next(
-            (u for u in users.values() if u["id"] == user_id),
-            None,
-        )
-
-        if not user or not user["active"]:
+        if not user_id:
             raise HTTPException(
                 status_code=401,
-                detail="User not found or account disabled.",
+                detail="Invalid access token.",
             )
 
-        return user
+        with SessionLocal() as db:
+            user = db.get(User, user_id)
+
+            if not user or not user.active:
+                raise HTTPException(
+                    status_code=401,
+                    detail="User not found or account disabled.",
+                )
+
+            result = _user_to_dict(user)
+            users[result["email"]] = result
+            return result
 
     except jwt.InvalidTokenError:
         raise HTTPException(

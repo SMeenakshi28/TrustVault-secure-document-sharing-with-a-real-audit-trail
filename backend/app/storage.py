@@ -93,13 +93,25 @@ def delete_object(storage_path: str) -> None:
             timeout=60.0,
         )
         response.raise_for_status()
+    
     except httpx.HTTPStatusError as exc:
+        # Supabase may return HTTP 400 with NoSuchKey when the object
+        # is already missing. Treat only that specific case as success.
+        try:
+            payload = exc.response.json()
+        except ValueError:
+            payload = {}
+
+        if payload.get("code") == "NoSuchKey":
+            print("Storage object was already missing; continuing deletion.")
+            return
+
         print("Storage delete failed:", exc.response.status_code)
-        print("Storage response:", exc.response.text[:1000])
         raise HTTPException(
             status_code=502,
-            detail="Could not delete the stored file. Check backend terminal.",
+            detail="Could not delete the stored file.",
         ) from exc
+
     except httpx.RequestError as exc:
         print("Storage connection failed:", str(exc))
         raise HTTPException(

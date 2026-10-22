@@ -1,4 +1,3 @@
-
 import uuid
 
 from datetime import datetime, timezone
@@ -97,7 +96,7 @@ class AuditLog(Base):
     )
     action: Mapped[str] = mapped_column(String(100), nullable=False)
     document_id: Mapped[str | None] = mapped_column(
-        ForeignKey("documents.id"), nullable=True
+    String(36), nullable=True
     )
     details: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     timestamp: Mapped[datetime] = mapped_column(

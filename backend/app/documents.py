@@ -128,6 +128,6 @@ def delete_document(document_id: str, owner_id: str):
         db.commit()
 
         return {
-            "message": "Document and stored file deleted successfully.",
+            "message": "Document and related shares deleted; stored file deleted or already absent.",
             "document_id": document_id,
         }

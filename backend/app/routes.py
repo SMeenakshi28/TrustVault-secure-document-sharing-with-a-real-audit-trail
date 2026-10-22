@@ -2,7 +2,6 @@ from uuid import uuid4
 from pathlib import Path
 from urllib.parse import quote
 
-# from backend.app.storage import download_object
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
@@ -281,11 +280,6 @@ def download_document_file(
 @router.delete("/documents/{document_id}")
 def remove_document(document_id: str, user: dict = Depends(get_current_user)):
     require_owner(user)
-
-    # TEMPORARY DEBUG LINE
-    from app.documents import get_document
-    doc = get_document(document_id, owner_id=user["id"])
-    print("Document storage path:", doc.get("storage_path"))
 
     result = delete_document(document_id=document_id, owner_id=user["id"])
     log_event(actor_id=user["id"], action="document_deleted", document_id=document_id)

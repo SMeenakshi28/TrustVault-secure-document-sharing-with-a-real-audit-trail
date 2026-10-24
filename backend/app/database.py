@@ -1,4 +1,3 @@
-# @'
 import os
 
 from dotenv import load_dotenv
@@ -36,4 +35,3 @@ def get_db():
         yield db
     finally:
         db.close()
-# '@ | Set-Content .\app\database.py -Encoding utf8

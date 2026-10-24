@@ -32,16 +32,27 @@ Set-Location C:\Users\meeku\Desktop\TrustVault\backend
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
-if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+if (-not (Test-Path .env)) { Copy-Item ..\.env.example .env }
 ```
 
 Edit `backend\.env` with the database URL, a random JWT secret of at least 32
-characters, the Supabase project URL, and its service-role key. Do not commit
-`.env`. You can generate a secret with:
+characters, a separate random audit HMAC key of at least 32 characters, the
+Supabase project URL, and its service-role key. Configure the frontend URL and
+an SMTP server that supports STARTTLS to deliver email verification links.
+Do not commit `.env`. You can generate secrets with:
 
 ```powershell
 python -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
+
+New accounts and accounts from existing databases must verify their email
+before signing in or receiving shares. Configure `TRUSTVAULT_FRONTEND_URL`,
+`TRUSTVAULT_SMTP_HOST`, `TRUSTVAULT_SMTP_PORT`, and
+`TRUSTVAULT_SMTP_FROM_EMAIL`; set both SMTP username and password when the
+server requires authentication. Keep `TRUSTVAULT_AUDIT_HMAC_KEY` stable and
+back it up separately from the database. Changing it makes events signed with
+the old key unverifiable; safe key rotation needs code that retains and selects
+the correct key version.
 
 Create missing tables, then apply the SQL files in `backend\migrations` in
 numeric order through the Supabase SQL editor when upgrading an existing

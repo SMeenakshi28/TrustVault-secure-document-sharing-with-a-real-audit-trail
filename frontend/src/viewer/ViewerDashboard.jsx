@@ -4,7 +4,6 @@ import UserSettings from "../components/UserSettings";
 import ViewerStats from "./ViewerStats";
 import SharedDocuments from "./SharedDocuments";
 import { apiRequest } from "../api";
-import { openSandboxedPreview } from "../security/openSandboxedPreview";
 
 function getExpirationDate(expiration) {
   if (!expiration || expiration.toLowerCase() === "no expiry") return null;
@@ -99,7 +98,7 @@ export default function ViewerDashboard({
         link.click();
         link.remove();
       } else {
-        openSandboxedPreview(previewWindow, url);
+        previewWindow.location.replace(url);
       }
 
       window.setTimeout(() => URL.revokeObjectURL(url), 60000);

@@ -10,17 +10,17 @@ The review is based on the repository code and tests, not on a live deployment. 
 
 ## Most important risks
 
-1. **Uploaded files can contain active web content.** The upload accepts the browser-supplied content type, and the view endpoint serves it inline. The frontend now previews files inside a sandboxed frame that blocks script execution; browser-level testing is still needed.
-2. **Email addresses are not verified.** A person can register an address they do not own. Since Owners share to an account by email, an attacker who claims an address first could receive a document intended for that address.
-3. **There is no request rate limit in the application.** Repeated login, upload, or other requests could consume service resources or enable password guessing.
-4. **A stolen login token can be reused until it expires.** Tokens last 30 minutes and are checked against current account status, but individual tokens are not revoked at logout.
-5. **The audit hash chain is not independent proof.** It can detect ordinary edits, but a person who can rewrite the database can also recompute the unkeyed hashes.
+1. **There is no request rate limit in the application.** Repeated login, upload, or other requests could consume service resources or enable password guessing.
+2. **A stolen login token can be reused until it expires.** Tokens last 30 minutes and are checked against current account status, but individual tokens are not revoked at logout.
+3. **Audit protection depends on a separately protected key.** New events use keyed hashes, but the key must stay outside the database and historical events remain on the older hash method.
+4. **Uploaded files still have client-supplied type labels.** Preview frames now block scripts, but safe rendering should be confirmed in a browser and file-type validation is still missing.
+5. **Production protections are not verified here.** The deployed storage policy, HTTPS, secret values, and backup arrangements need deployment checks.
 
 Also verify that deployment secrets are protected and the Supabase bucket is private. The code uses a server-side service key, but repository code cannot prove the deployed bucket's access policy.
 
 ## Current test evidence
 
-I ran the backend test suite from `backend` with `python -m pytest .\tests -q`: **70 passed, 1 skipped**. The suite uses an isolated in-memory SQLite database; it does not test the deployed PostgreSQL database or real Supabase storage. Several route tests replace storage with a test double. A passing suite is useful evidence for the cases it actually checks, not proof that every threat is blocked.
+I ran the backend test suite from `backend` with `python -m pytest .\tests -q`: **75 passed, 1 skipped**. Frontend `npm run lint` and `npm run build` also passed. In the browser, a script inside an iframe with the same empty `sandbox` setting used by the preview helper did not execute; this was not a full upload-and-preview test. The backend suite uses isolated in-memory SQLite; it does not test the deployed PostgreSQL database or real Supabase storage. Several route tests replace storage with a test double. A passing suite is useful evidence for the cases it actually checks, not proof that every threat is blocked.
 
 Relevant existing test names are listed with the threats below. Tests that are recommendations, not existing tests, are labeled as such.
 
@@ -164,7 +164,7 @@ Relevant existing test names are listed with the threats below. Tests that are r
 
 **How to test it:** In a safe test environment, upload a harmless HTML file containing a visible script marker and share it. Confirm opening it cannot execute in the TrustVault origin and that downloaded bytes remain unchanged. Also test a filename containing HTML-like characters in list and share views.
 
-**Status:** Partially implemented. Both frontend preview paths use a restrictive sandbox, but this new browser behavior has not yet been tested in an actual browser. The backend still accepts the client-supplied content type, and there is no upload/preview safety test.
+**Status:** Partially implemented. A browser check confirmed an empty sandbox blocks a sample script, and both frontend preview paths use it. The full authenticated upload-and-preview flow is not browser-tested, and the backend still accepts the client-supplied content type.
 
 ### 11. Creating fake activity or changing audit records
 
@@ -174,11 +174,11 @@ Relevant existing test names are listed with the threats below. Tests that are r
 
 **Possible damage:** The history could no longer be trusted to prove who did what.
 
-**How to prevent it:** Normal application users have no audit-write endpoint; events are created by backend code. The hash chain detects changes that do not also update the chain. It is not protected against someone who can rewrite the database because the hashes are unkeyed and checked against the same database. For stronger evidence, send signed checkpoints to separately controlled append-only storage.
+**How to prevent it:** Normal application users have no audit-write endpoint; events are created by backend code. New events use an HMAC (a hash made with a secret key) from `TRUSTVAULT_AUDIT_HMAC_KEY`, which must be stored outside the database. An attacker with database access but not this key cannot recompute new event hashes. Existing events keep their legacy unkeyed hashes, and a database writer could still remove the newest events without an external checkpoint. A separate append-only store would provide stronger evidence.
 
-**How to test it:** Confirm an ordinary Viewer cannot call an API to create, edit, or delete events. Change an event in a test database without updating its hash and expect verification to fail. The current tampering test checks this basic case, not a full rewrite by a database administrator.
+**How to test it:** Confirm an ordinary Viewer cannot call an API to create, edit, or delete events. Change an event and recompute its hash using ordinary SHA-256; verification should still fail for a new event. Also confirm a historical legacy event still verifies. Existing tests include `test_tampering_is_detected`, `test_database_writer_cannot_recompute_event_hash_without_key`, and `test_legacy_sha256_event_remains_verifiable`.
 
-**Status:** Partially implemented. `test_tampering_is_detected` verifies basic tampering detection; external tamper-resistant storage and a privileged-rewrite test are absent.
+**Status:** Partially implemented. New events use keyed hashes and tests confirm ordinary SHA-256 cannot recreate them. Historical hashes remain unkeyed, and independent storage to detect deletion of the audit tail is absent.
 
 ### 12. Seeing private document names in lists or search
 
@@ -216,7 +216,7 @@ Relevant existing test names are listed with the threats below. Tests that are r
 
 **Possible damage:** An attacker could impersonate users, read or alter database rows, or bypass storage rules.
 
-**How to prevent it:** Backend configuration reads secrets from environment variables; `.env` is ignored and `.env.example` is a template. The development-owner option creates a known-password account if explicitly enabled; the README warns to keep it disabled. Never put service keys in `frontend` variables or commit real `.env` files. Use a secret scanner and rotate any exposed key.
+**How to prevent it:** Backend configuration reads secrets from environment variables; `.env` is ignored and `.env.example` is a template. The JWT key and new audit HMAC key must be separate, long random values. The development-owner option creates a known-password account if explicitly enabled; the README warns to keep it disabled. Never put service keys in `frontend` variables or commit real `.env` files. Use a secret scanner and rotate any exposed key.
 
 **How to test it:** Scan tracked files and built frontend assets for real credentials, verify the test-owner flag is false in deployment, and confirm the backend refuses to start without a sufficiently long JWT secret. This review did not inspect deployment secret values.
 
@@ -314,11 +314,11 @@ Relevant existing test names are listed with the threats below. Tests that are r
 
 **Possible damage:** A document could be delivered to an unintended account.
 
-**How to prevent it:** Verify control of an email address before allowing the account to receive shares. The current signup flow creates active accounts without email verification, and shares select recipients by registered email.
+**How to prevent it:** New accounts must verify an expiring, one-use link sent by SMTP before they can sign in or receive shares. Existing accounts become unverified after applying migration `006_email_verification.sql` and must verify too. SMTP delivery settings must be configured and tested in deployment.
 
 **How to test it:** Register an unverified address and attempt to share to it. After implementing verification, confirm it cannot receive/access shares until verification is complete.
 
-**Status:** Not implemented. No email verification flow or verified-email state was found.
+**Status:** Partially implemented. Signup, login, share eligibility, token expiry/reuse checks, and resend behavior are covered in code/tests. Actual SMTP delivery and the production email link are not tested here.
 
 ### 22. SQL injection through IDs or search values
 
@@ -355,15 +355,22 @@ Useful existing coverage includes:
 - `test_existing_token_is_rejected_after_deactivation`
 - `test_signup_ignores_client_supplied_role`
 - `test_tampering_is_detected`
+- `test_database_writer_cannot_recompute_event_hash_without_key`
+- `test_legacy_sha256_event_remains_verifiable`
+- `test_login_after_signup_requires_and_accepts_email_verification`
+- `test_expired_email_verification_token_is_rejected`
+- `test_resend_verification_does_not_disclose_account_status`
 
-Important gaps include unauthenticated document-file tests, Viewer direct share attempts, cross-Owner delete attempts with unchanged-data assertions, forged token-role tests, HTML upload/preview safety, actual upload limits/type validation, storage policy checks, and revocation-versus-download race tests.
+Important gaps include unauthenticated document-file tests, Viewer direct share attempts, cross-Owner delete attempts with unchanged-data assertions, forged token-role tests, browser-level HTML preview safety, actual upload limits/type validation, real SMTP delivery, storage policy checks, audit-tail deletion detection, and revocation-versus-download race tests.
 
 ## Limitations and accepted risks
 
 - A Viewer who can see a document can take a screenshot, copy text, or keep a delivered copy.
 - Revoking a share blocks later backend requests; it cannot erase a file already downloaded or reliably close content already delivered to a browser.
 - The one-time share logic limits successful delivery, but is not a digital-rights system that can prevent copying after delivery.
-- A database administrator who can rewrite ordinary audit rows can recompute this unkeyed hash chain. Independent append-only storage is needed for stronger evidence.
+- The iframe sandbox setting blocked a sample script in a browser. The full authenticated upload-and-preview flow and hostile file formats still need browser testing.
+- New audit events use an HMAC key outside the database, but historical events use the old unkeyed hash. A database administrator can still remove the latest events without an external checkpoint. Keep the audit key stable and back it up separately from the database.
+- Email verification uses an expiring, one-use token. SMTP delivery settings must be configured and tested in deployment. Existing accounts become unverified when migration `006_email_verification.sql` is applied and must verify before signing in.
 - The backend expects PostgreSQL and Supabase Storage configuration, but tests use SQLite and mocked storage. Production access rules need separate checks.
 - The code and README require a private Supabase bucket and secret environment variables; this repository review did not verify a live bucket policy, production secrets, HTTPS, backups, or deployment rate limits.
 - No request rate limiter was found. This is a real gap, not a claim that an attack has happened.

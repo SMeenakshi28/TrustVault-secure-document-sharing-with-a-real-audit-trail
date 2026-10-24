@@ -6,7 +6,6 @@ import DocumentLibrary from "./DocumentLibrary";
 import SharedAccess from "./SharedAccess";
 import ActivityLog from "./ActivityLog";
 import SharedDocuments from "../viewer/SharedDocuments";
-import { openSandboxedPreview } from "../security/openSandboxedPreview";
 
 function mapActivityEvents(data) {
   const events = Array.isArray(data)
@@ -213,7 +212,7 @@ export default function OwnerDashboard({
         link.click();
         link.remove();
       } else {
-        openSandboxedPreview(previewWindow, url);
+        previewWindow.location.replace(url);
       }
       window.setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (error) {

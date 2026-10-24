@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.database import SessionLocal
-from app.models import User
+from app.models import User, UserIdentity
 from app.security import Role
 
 load_dotenv()
@@ -82,6 +82,15 @@ def create_user(name: str, email: str, password: str):
         db.add(user)
 
         try:
+            db.flush()
+            identity = db.get(UserIdentity, user.id)
+            if not identity:
+                db.add(UserIdentity(
+                    id=user.id,
+                    name=user.name,
+                    email=user.email,
+                    created_at=user.created_at,
+                ))
             db.commit()
             db.refresh(user)
         except IntegrityError:

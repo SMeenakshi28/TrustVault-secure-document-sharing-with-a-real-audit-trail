@@ -1,68 +1,79 @@
-
 import pytest
 from fastapi import HTTPException
+from sqlalchemy import select
 
+from app.database import SessionLocal
 from app.documents import (
-    documents,
     create_document,
-    list_owner_documents,
-    get_document,
     delete_document,
+    get_document,
+    list_owner_documents,
 )
+from app.models import Document
 from app.security import Role
 
 
-@pytest.fixture(autouse=True)
-def clear_documents():
-    documents.clear()
-    yield
-    documents.clear()
-
-
-def test_owner_can_create_document():
+def test_owner_can_create_document(create_account):
+    owner = create_account("Owner", "owner@example.com", Role.OWNER)
     document = create_document(
-        "owner1", Role.OWNER, "report.pdf", "application/pdf", 1024
+        owner["id"], Role.OWNER, "report.pdf", "application/pdf", 1024
     )
 
     assert document["filename"] == "report.pdf"
-    assert document["owner_id"] == "owner1"
+    assert document["owner_id"] == owner["id"]
 
 
-def test_viewer_cannot_create_document():
+def test_viewer_cannot_create_document(create_account):
+    viewer = create_account("Viewer", "viewer@example.com")
+
     with pytest.raises(HTTPException) as error:
         create_document(
-            "viewer1", Role.VIEWER, "report.pdf", "application/pdf", 1024
+            viewer["id"], Role.VIEWER, "report.pdf", "application/pdf", 1024
         )
 
     assert error.value.status_code == 403
 
 
-def test_owner_only_sees_own_documents():
-    create_document("owner1", Role.OWNER, "a.pdf", "application/pdf", 100)
-    create_document("owner2", Role.OWNER, "b.pdf", "application/pdf", 200)
+def test_owner_only_sees_own_documents(create_account):
+    owner = create_account("Owner", "owner@example.com", Role.OWNER)
+    other = create_account("Other", "other@example.com", Role.OWNER)
+    create_document(owner["id"], Role.OWNER, "a.pdf", "application/pdf", 100)
+    create_document(other["id"], Role.OWNER, "b.pdf", "application/pdf", 200)
 
-    result = list_owner_documents("owner1")
+    result = list_owner_documents(owner["id"])
 
-    assert len(result) == 1
-    assert result[0]["filename"] == "a.pdf"
+    assert [document["filename"] for document in result] == ["a.pdf"]
 
 
-def test_owner_cannot_access_another_owners_document():
+def test_owner_cannot_access_another_owners_document(create_account):
+    owner = create_account("Owner", "owner@example.com", Role.OWNER)
+    other = create_account("Other", "other@example.com", Role.OWNER)
     document = create_document(
-        "owner1", Role.OWNER, "private.pdf", "application/pdf", 100
+        owner["id"], Role.OWNER, "private.pdf", "application/pdf", 100
     )
 
     with pytest.raises(HTTPException) as error:
-        get_document(document["id"], "owner2")
+        get_document(document["id"], other["id"])
 
     assert error.value.status_code == 404
 
 
-def test_owner_can_delete_own_document():
+def test_delete_soft_deletes_metadata_and_preserves_history(
+    create_account, monkeypatch
+):
+    owner = create_account("Owner", "owner@example.com", Role.OWNER)
     document = create_document(
-        "owner1", Role.OWNER, "remove.pdf", "application/pdf", 100
+        owner["id"], Role.OWNER, "remove.pdf", "application/pdf", 100
     )
+    monkeypatch.setattr("app.storage.delete_object", lambda _path: None)
 
-    delete_document(document["id"], "owner1")
+    delete_document(document["id"], owner["id"])
 
-    assert document["id"] not in documents
+    with SessionLocal() as db:
+        stored = db.scalar(
+            select(Document).where(Document.id == document["id"])
+        )
+        assert stored is not None
+        assert stored.is_deleted is True
+
+    assert list_owner_documents(owner["id"]) == []

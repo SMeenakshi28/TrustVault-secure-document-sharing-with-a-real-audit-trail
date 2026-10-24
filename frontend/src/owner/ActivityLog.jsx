@@ -1,4 +1,8 @@
-export default function ActivityLog({ activityLog }) {
+export default function ActivityLog({
+  activityLog = [],
+  loading = false,
+  error = "",
+}) {
   return (
     <section className="panel shared-access-panel">
       <div className="panel-heading">
@@ -7,6 +11,8 @@ export default function ActivityLog({ activityLog }) {
           <p className="muted">A read-only record of activity on shared documents.</p>
         </div>
       </div>
+      {loading && <p className="muted" role="status">Loading activity history…</p>}
+      {error && <p className="form-message" role="alert">{error}</p>}
       <div className="activity-table-wrap">
         <table className="activity-table">
           <thead>
@@ -18,14 +24,14 @@ export default function ActivityLog({ activityLog }) {
           <tbody>
             {activityLog.length === 0 ? (
               <tr><td className="activity-empty" colSpan="6">Nothing to show</td></tr>
-            ) : activityLog.map((activity) => (
+            ) : activityLog.filter((activity) => activity && typeof activity === "object").map((activity) => (
               <tr key={activity.id}>
-                <td>{activity.timestamp}</td>
-                <td className="activity-user">{activity.user}</td>
-                <td className="activity-action">{activity.action}</td>
-                <td>{activity.document}</td>
-                <td><span className={`result-badge ${activity.result === "Success" ? "result-success" : "result-expired"}`}>{activity.result}</span></td>
-                <td>{activity.details}</td>
+                <td>{String(activity.timestamp || "—")}</td>
+                <td className="activity-user">{String(activity.user || "User")}</td>
+                <td className="activity-action">{String(activity.action || "Activity")}</td>
+                <td>{String(activity.document || "—")}</td>
+                <td><span className={`result-badge ${activity.result === "Success" || activity.result === "Recorded" ? "result-success" : "result-expired"}`}>{String(activity.result || "Recorded")}</span></td>
+                <td>{typeof activity.details === "string" ? activity.details : activity.details == null ? "" : JSON.stringify(activity.details)}</td>
               </tr>
             ))}
           </tbody>

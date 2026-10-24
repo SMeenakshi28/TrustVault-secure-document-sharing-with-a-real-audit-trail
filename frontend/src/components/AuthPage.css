@@ -1,0 +1,18 @@
+.forgot-password-row {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 8px;
+}
+
+.forgot-password-btn {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #2860ee;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.forgot-password-btn:hover {
+  text-decoration: underline;
+}

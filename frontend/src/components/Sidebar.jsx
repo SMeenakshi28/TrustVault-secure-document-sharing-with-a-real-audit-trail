@@ -20,6 +20,9 @@ export default function Sidebar({ selectedRole, selectedView, setSelectedView, f
           <button type="button" className={`sidebar-link ${selectedView === "shared" ? "active" : ""}`} onClick={() => setSelectedView("shared")}>
             <span>♧</span> Shared Access
           </button>
+          <button type="button" className={`sidebar-link ${selectedView === "shared_with_me" ? "active" : ""}`} onClick={() => setSelectedView("shared_with_me")}>
+            <span>▤</span> Shared With Me
+          </button>
           <button type="button" className={`sidebar-link ${selectedView === "activity" ? "active" : ""}`} onClick={() => setSelectedView("activity")}>
             <span>◷</span> Activity Log
           </button>
@@ -34,6 +37,9 @@ export default function Sidebar({ selectedRole, selectedView, setSelectedView, f
           <button type="button" className={`sidebar-link ${selectedView === "audit_logs" ? "active" : ""}`} onClick={() => setSelectedView("audit_logs")}>
             <span>◷</span> Audit Logs
           </button>
+          <button type="button" className={`sidebar-link ${selectedView === "owner_requests" ? "active" : ""}`} onClick={() => setSelectedView("owner_requests")}>
+            <span>♙</span> Owner Requests
+          </button>
         </>
       )}
 
@@ -42,6 +48,10 @@ export default function Sidebar({ selectedRole, selectedView, setSelectedView, f
           <span>▤</span> Shared With Me
         </button>
       )}
+
+      <button type="button" className={`sidebar-link ${selectedView === "settings" ? "active" : ""}`} onClick={() => setSelectedView("settings")}>
+        <span>⚙</span> User Settings
+      </button>
 
       <div className="sidebar-bottom">
         <div className="profile-avatar">

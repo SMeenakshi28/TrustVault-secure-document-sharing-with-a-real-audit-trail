@@ -1,14 +1,15 @@
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 import json
 from uuid import uuid4
 
 from fastapi import HTTPException
-from sqlalchemy import text
+from sqlalchemy import or_, select, text
+from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
-from app.models import AuditLog
+from app.models import AuditLog, Document
 from app.security import Role
 
 
@@ -49,61 +50,73 @@ def log_event(
     action: str,
     document_id: str | None = None,
     details: dict | None = None,
+    db: Session | None = None,
 ):
-    db = SessionLocal()
-
-    try:
-        with db.begin():
+    def append_event(session: Session) -> dict:
+        if session.bind.dialect.name == "postgresql":
             # Serialize audit writes so concurrent requests do not
             # append events using the same previous hash.
-            db.execute(
+            session.execute(
                 text("SELECT pg_advisory_xact_lock(:lock_key)"),
                 {"lock_key": AUDIT_LOCK_KEY},
             )
 
-            last_event = (
-                db.query(AuditLog)
-                .order_by(
-                    AuditLog.timestamp.desc(),
-                    AuditLog.id.desc(),
-                )
-                .first()
+        last_event = (
+            session.query(AuditLog)
+            .order_by(
+                AuditLog.timestamp.desc(),
+                AuditLog.id.desc(),
             )
+            .first()
+        )
 
-            timestamp = datetime.now(timezone.utc)
+        timestamp = datetime.now(timezone.utc)
+        if last_event:
+            last_timestamp = last_event.timestamp
+            if last_timestamp.tzinfo is None:
+                last_timestamp = last_timestamp.replace(tzinfo=timezone.utc)
+            if timestamp <= last_timestamp:
+                timestamp = last_timestamp + timedelta(microseconds=1)
 
-            event = {
-                "id": str(uuid4()),
-                "actor_id": actor_id,
-                "action": action,
-                "document_id": document_id,
-                "details": details or {},
-                "timestamp": timestamp.isoformat(),
-                "previous_hash": (
-                    last_event.event_hash
-                    if last_event
-                    else GENESIS_HASH
-                ),
-            }
+        event = {
+            "id": str(uuid4()),
+            "actor_id": actor_id,
+            "action": action,
+            "document_id": document_id,
+            "details": details or {},
+            "timestamp": timestamp.isoformat(),
+            "previous_hash": (
+                last_event.event_hash
+                if last_event
+                else GENESIS_HASH
+            ),
+        }
 
-            event_hash = _hash_event(event)
+        event_hash = _hash_event(event)
 
-            db.add(AuditLog(
-                id=event["id"],
-                actor_id=event["actor_id"],
-                action=event["action"],
-                document_id=event["document_id"],
-                details=event["details"],
-                timestamp=timestamp,
-                previous_hash=event["previous_hash"],
-                event_hash=event_hash,
-            ))
-
+        session.add(AuditLog(
+            id=event["id"],
+            actor_id=event["actor_id"],
+            action=event["action"],
+            document_id=event["document_id"],
+            details=event["details"],
+            timestamp=timestamp,
+            previous_hash=event["previous_hash"],
+            event_hash=event_hash,
+        ))
         event["event_hash"] = event_hash
         return event
 
+    if db is not None:
+        return append_event(db)
+
+    session = SessionLocal()
+    try:
+        with session.begin():
+            event = append_event(session)
+        return event
     finally:
-        db.close()
+        session.close()
 
 
 def list_audit_logs(requester_role: Role):
@@ -118,6 +131,28 @@ def list_audit_logs(requester_role: Role):
         rows = (
             db.query(AuditLog)
             .order_by(AuditLog.timestamp.asc(), AuditLog.id.asc())
+            .all()
+        )
+        return [_row_to_event(row) for row in rows]
+    finally:
+        db.close()
+
+def list_owner_audit_logs(owner_id: str):
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(AuditLog)
+            .filter(
+                or_(
+                    AuditLog.actor_id == owner_id,
+                    AuditLog.document_id.in_(
+                        select(Document.id).where(
+                            Document.owner_id == owner_id
+                        )
+                    ),
+                )
+            )
+            .order_by(AuditLog.timestamp.desc(), AuditLog.id.desc())
             .all()
         )
         return [_row_to_event(row) for row in rows]

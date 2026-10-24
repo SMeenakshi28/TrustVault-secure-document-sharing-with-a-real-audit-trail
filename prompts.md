@@ -571,27 +571,212 @@ The backend foundation is substantially implemented, but deletion consistency, s
 
 This record describes the work and test outcomes observed during Day 3. It does not claim that every backend feature is complete or production-ready.
 
-## ## Day 4,5 — Existing-project debugging — October 22 & 23, 2026
+# PROMPTS.md — TrustVault Development Log
 
-### Changes made
+This document records my AI-assisted development work on TrustVault, a secure document-sharing platform with a real audit trail, during October 22–24, 2026.
 
-- Confirmed `frontend/package.json` already declares Vite and `frontend/package-lock.json` matches it. Installed dependencies from `frontend`; Node 24.22.0 satisfies the Vite 8 and React plugin engine requirements.
-- Added account-management checks and transactionally audited deactivation in `backend/app/admin.py`. Deactivation preserves user/document/audit rows and revokes related shares. Existing token validation checks current account status in `backend/app/auth.py`.
-- Added `SharingPermission.viewed_at` and the idempotent migration `backend/migrations/003_one_time_share_access.sql`. Viewer view and permitted download requests are limited to one successful storage delivery; the consumed marker and success audit event commit together. Failed storage retrieval does not consume access.
-- Connected the owner Share form to `POST /documents/{document_id}/share`; the API resolves an active viewer by email and validates ownership, name, and a future timezone-aware expiration.
-- Added the viewer's one-time warning and access actions. This controls future application requests; it cannot prevent a recipient from retaining or capturing a delivered copy.
-- Kept the audit actor foreign key: `backend/migrations/002_allow_user_deletion_preserve_audit.sql` no longer removes it. Added isolated database-backed auth, admin, permission, route, and audit tests under `backend/tests`.
-- Added Windows setup instructions in `README.md` and non-secret backend configuration placeholders in `backend/.env.example`. Added `pytest` to `backend/requirements.txt`.
+I used AI assistance to debug existing code, improve authorization, implement one-time document access, preserve audit records, write tests, and prepare the project for local setup and deployment. I reviewed the generated suggestions against the project's code, errors, and test results rather than assuming they were correct.
 
-### Validation performed
+**Note:** The prompts below are fair summaries of the development tasks, not exact quotations of every original AI conversation. Commit links should be added using the corresponding verified Git commits.
 
-- `npm install` from `frontend`: succeeded; 144 packages audited, 0 vulnerabilities reported.
-- `npm run dev` from `frontend`: served the Vite app over HTTP with status 200.
-- `npm run lint` and `npm run build` from `frontend`: succeeded.
-- `python -m pip install -r requirements.txt` from `backend`: succeeded in `backend\.venv`.
-- `python -m pytest -q` from `backend`: 38 passed, 1 skipped. The PostgreSQL row-lock concurrency test is skipped with SQLite because SQLite cannot exercise PostgreSQL locking.
-- Started `python -m uvicorn app.main:app` from `backend` and queried `/health` with `curl`: HTTP 200. This health check does not verify database or Supabase connectivity.
+## Day 4–5 — Existing-project debugging — October 22–23, 2026
 
-### Remaining verification
+### Entry 1 — October 22: Frontend setup and dependency verification
 
-Apply the numbered SQL migrations to the target database and verify the Supabase connection, private bucket, and real document storage operations using the project's configured services. Run the concurrency test against a disposable PostgreSQL test database before relying on it in production.
+**What I asked AI to help with**
+
+Help me run the existing TrustVault frontend locally and identify whether its dependencies and development environment were configured correctly.
+
+**What AI helped produce**
+
+The existing frontend configuration was inspected. `frontend/package.json` already declared Vite, and `frontend/package-lock.json` matched it. Dependencies were installed from the `frontend` directory.
+
+**Problem faced**
+
+Before debugging application behavior, I needed to ensure that the frontend dependencies and development environment were working correctly. Otherwise, setup problems could be confused with application bugs.
+
+**What I did instead**
+
+I retained the existing dependency configuration rather than unnecessarily replacing it and installed the dependencies from the correct directory. Node.js 24.22.0 satisfied the Vite 8 and React plugin engine requirements.
+
+**How I checked it**
+
+- `npm install` succeeded.
+- 144 packages were audited, with zero vulnerabilities reported.
+- `npm run dev` served the Vite application over HTTP with status 200.
+- `npm run lint` and `npm run build` both succeeded.
+
+**Status:** Setup and frontend validation completed successfully.
+
+**Commit:** Add the verified commit link for the relevant setup changes, if applicable.
+
+### Entry 2 — October 22: Admin authorization and safe account deactivation
+
+**What I asked AI to help with**
+
+Help me improve admin account management, enforce authorization for administrative operations, and deactivate accounts without damaging related records or audit history.
+
+**What AI helped produce**
+
+The backend account-management logic was updated in `backend/app/admin.py`. Account deactivation was implemented with transactionally recorded changes, while authentication in `backend/app/auth.py` checks the current account status.
+
+**Problem faced**
+
+Account deactivation must not accidentally delete a user's documents or audit history. It must also prevent a deactivated account from continuing to use previously issued authentication tokens.
+
+Another important security requirement is that administrative endpoints must check the caller's permissions on the backend. Hiding an admin screen in the frontend is not sufficient protection.
+
+**What I did instead**
+
+I implemented account deactivation that preserves user, document, and audit records while revoking related shares. I also retained the current-account-status check during token validation so that deactivated accounts can be rejected.
+
+**How I checked it**
+
+The project includes database-backed authentication, admin, permission, route, and audit tests under `backend/tests`. The complete test suite later passed 38 tests, with one test skipped.
+
+The remaining deployment checks must confirm that the relevant database migrations and configured services work correctly in the target environment.
+
+**Status:** Backend changes implemented; test suite passed locally, with deployment-specific verification still required.
+
+**Commit:** Add the verified commit link for the admin and authentication changes.
+
+### Entry 3 — October 22–23: One-time document access and audit consistency
+
+**What I asked AI to help with**
+
+Help me implement one-time access for shared documents while ensuring that access is enforced by the backend and successful document delivery is recorded in the audit trail.
+
+**What AI helped produce**
+
+The sharing permission model was updated with `SharingPermission.viewed_at`. An idempotent migration was added at `backend/migrations/003_one_time_share_access.sql`.
+
+The implementation limits successful storage delivery through permitted viewer access and download requests. The consumed-access marker and successful audit event are committed together. A failed storage retrieval does not consume the access permission.
+
+**Problem faced**
+
+A one-time share must not be consumed when a storage operation fails. Otherwise, a viewer could lose their only permitted access without receiving the document.
+
+There was also a risk of recording a successful access separately from marking the permission as consumed, which could leave the access state and audit history inconsistent.
+
+**What I did instead**
+
+I implemented the one-time access state and audit update together, using the database transaction to keep them consistent. I also retained the audit actor foreign key in `backend/migrations/002_allow_user_deletion_preserve_audit.sql` rather than removing that relationship to simplify user deletion.
+
+**How I checked it**
+
+The backend test suite includes permission and audit tests, and the local test run completed with 38 passed and one skipped.
+
+The PostgreSQL row-lock concurrency test was skipped under SQLite because SQLite cannot exercise PostgreSQL locking behavior. Therefore, the concurrency behavior still needs to be verified against a disposable PostgreSQL test database.
+
+**Status:** Implemented and tested locally; PostgreSQL concurrency verification remains pending.
+
+**Commit:** Add the verified commit links for the migration, permission logic, and audit changes.
+
+### Entry 4 — October 23: Owner sharing workflow and Viewer access
+
+**What I asked AI to help with**
+
+Help me connect the Owner's Share form to the backend and provide the Viewer with controlled access to shared documents.
+
+**What AI helped produce**
+
+The Owner Share form was connected to `POST /documents/{document_id}/share`.
+
+The API resolves an active Viewer using their email address and validates document ownership, the Viewer name, and a future timezone-aware expiration.
+
+The Viewer interface was updated to provide a one-time access warning and the permitted viewing and download actions.
+
+**Problem faced**
+
+The application needed to verify sharing permissions on the backend rather than trusting the frontend. It also needed to reject invalid recipients, unauthorized owners, and invalid expiration values.
+
+One-time access has an important limitation: it controls future application requests, but it cannot prevent a recipient from saving, copying, photographing, or otherwise capturing a document after receiving it.
+
+**What I did instead**
+
+I connected the Owner's sharing workflow to the backend API and added validation before granting access. I also added the Viewer warning and access actions while treating the backend as the authority for whether a document can be delivered.
+
+**How I checked it**
+
+The backend suite includes permission and route tests. The frontend lint and production build also succeeded.
+
+The remaining deployment verification includes testing the sharing workflow with the configured database and storage services, including unauthorized requests and repeated access attempts.
+
+**Status:** Implemented; complete end-to-end verification against the deployed services remains pending.
+
+**Commit:** Add the verified commit links for the sharing API and Viewer interface.
+
+### Entry 5 — October 23–24: Audit preservation, tests, and project setup
+
+**What I asked AI to help with**
+
+Help me preserve audit history, prepare the project for local development on Windows, and create tests for authentication, administration, permissions, routes, and audit behavior.
+
+**What AI helped produce**
+
+The audit actor foreign key was retained in `backend/migrations/002_allow_user_deletion_preserve_audit.sql`. Database-backed tests were added under `backend/tests`, and `pytest` was added to `backend/requirements.txt`.
+
+Windows setup instructions were added to `README.md`, along with non-secret backend configuration placeholders in `backend/.env.example`.
+
+**Problem faced**
+
+Removing database relationships to make account deletion easier could weaken audit integrity. Also, a project may work on one developer's machine but fail elsewhere if setup instructions, dependencies, or configuration placeholders are missing.
+
+A passing test suite is useful evidence, but it does not automatically verify real Supabase connectivity, private storage permissions, or PostgreSQL-specific concurrency behavior.
+
+**What I did instead**
+
+I retained the audit relationship, added database-backed tests, documented the Windows setup process, and provided configuration placeholders without exposing actual secrets.
+
+**How I checked it**
+
+- `python -m pip install -r requirements.txt` succeeded in `backend\\.venv`.
+- `python -m pytest -q` completed with **38 passed, 1 skipped**.
+- The skipped test was the PostgreSQL row-lock concurrency test, which cannot be meaningfully exercised using SQLite.
+- `python -m uvicorn app.main:app` started the backend.
+- A `curl` request to `/health` returned HTTP 200.
+
+The health check confirms that the application responded, but it does not prove that the database or Supabase storage is connected correctly.
+
+**Status:** Local setup and tests succeeded; external service and PostgreSQL concurrency verification remain pending.
+
+**Commit:** Add the verified commit links for the tests, migration, README, and environment example.
+
+## Validation summary — October 24, 2026
+
+| Check | Result |
+|---|---|
+| Frontend dependency installation | Succeeded |
+| Frontend development server | HTTP 200 |
+| Frontend lint | Succeeded |
+| Frontend production build | Succeeded |
+| Backend dependency installation | Succeeded |
+| Backend tests | 38 passed, 1 skipped |
+| Backend startup | Succeeded |
+| `/health` endpoint | HTTP 200 |
+| SQL migrations | Applied |
+| Supabase connection and private bucket | Verified |
+| Document upload, retrieval, and deletion | Verified |
+| PostgreSQL concurrency test | Completed against a disposable PostgreSQL test database |
+| Unauthorized admin and document access checks | Tested |
+| One-time access and audit behavior | Verified |
+| Complete sharing and viewing workflow | Verified |
+
+## Completed verification — October 24, 2026
+
+1. **Database migrations:** Applied the numbered SQL migrations to the target database.
+2. **Supabase and document storage:** Verified the Supabase connection, private bucket configuration, and real document upload, retrieval, and deletion operations.
+3. **Concurrency:** Ran the concurrency test against a disposable PostgreSQL test database because SQLite cannot verify PostgreSQL row-locking behavior.
+4. **Authorization:** Tested that unauthorized users cannot access admin endpoints or documents that were not shared with them.
+5. **One-time access and audit trail:** Verified that failed storage delivery does not consume access and that successful delivery records the expected audit event.
+6. **End-to-end workflow:** Verified the complete sharing and viewing workflow against the deployed services.
+
+## Lessons learned
+
+- A working screen does not prove that backend authorization is secure.
+- Account deactivation must preserve documents and audit records while preventing future authenticated access.
+- One-time access needs consistent permission state and audit recording.
+- Local tests alone are not enough; database, storage, and deployment behavior must also be verified.
+- AI suggestions must be checked against code, test results, and actual application behavior.
+
+These checks are marked complete based on your update. Keep the recorded test counts and commit links aligned with your actual test output and Git history.

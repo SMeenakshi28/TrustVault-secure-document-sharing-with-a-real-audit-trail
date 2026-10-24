@@ -106,10 +106,14 @@ def delete_object(storage_path: str) -> None:
             print("Storage object was already missing; continuing deletion.")
             return
 
-        print("Storage delete failed:", exc.response.status_code)
+        print(
+            "Supabase upload failed:",
+            exc.response.status_code,
+            exc.response.text[:1000],
+        )
         raise HTTPException(
             status_code=502,
-            detail="Could not delete the stored file.",
+            detail="File upload to secure storage failed.",
         ) from exc
 
     except httpx.RequestError as exc:

@@ -37,6 +37,30 @@ All features below were confirmed in the source code.
 
 The first Admin is created with a command-line script (see [Installation and Setup](#installation-and-setup)); it cannot be created through signup.
 
+## Demo Accounts
+
+TrustVault supports three user roles: Admin, Owner, and Viewer. The following demo accounts are intended to help reviewers explore the application and understand how role-based access control works.
+
+| Role | Name | Demo Email | Demo Password |
+|---|---|---|
+| Admin | Rahul Sharma |`rahul.sharma@trustvault.example` | `RahulAdmin@2026!` |
+| Owner | Priya Reddy |`priya.reddy@trustvault.example` | `PriyaOwner@2026!` |
+| Viewer | Arjun Kumar |`arjun.kumar@trustvault.example` | `ArjunView@2026!` |
+
+**Note:** These are sample credentials. The accounts must be created and assigned the correct roles in the application before they can be used to log in.
+
+### How to Test Each Role
+
+- **Admin:** Explore user management, role administration, and audit logs.
+- **Owner:** Upload a sample document, manage its permissions, share it, and revoke access.
+- **Viewer:** Access documents shared with the account and test the available viewing and download permissions.
+
+### Why Three Roles?
+
+TrustVault uses role-based access control to separate administrative responsibilities, document ownership, and document access. Testing all three roles helps demonstrate that users have different permissions and cannot perform actions outside their authorized scope.
+
+**Security notice:** These credentials are for demonstration purposes only. Do not use real or confidential documents with public demo accounts. Ensure demo data is isolated, restrict destructive actions where appropriate, and never use these passwords for real accounts.
+
 ## Tech Stack
 
 | Layer | Technologies (from `package.json` / `requirements.txt`) |

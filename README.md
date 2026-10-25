@@ -42,10 +42,10 @@ The first Admin is created with a command-line script (see [Installation and Set
 TrustVault supports three user roles: Admin, Owner, and Viewer. The following demo accounts are intended to help reviewers explore the application and understand how role-based access control works.
 
 | Role | Name | Demo Email | Demo Password |
-|---|---|---|
-| Admin | Rahul Sharma |`rahul.sharma@trustvault.example` | `RahulAdmin@2026!` |
-| Owner | Priya Reddy |`priya.reddy@trustvault.example` | `PriyaOwner@2026!` |
-| Viewer | Arjun Kumar |`arjun.kumar@trustvault.example` | `ArjunView@2026!` |
+|---|---|---|---|
+| Admin | Rahul Sharma | `rahul.sharma@trustvault.example` | `RahulAdmin@2026!` |
+| Owner | Priya Reddy | `priya.reddy@trustvault.example` | `PriyaOwner@2026!` |
+| Viewer | Arjun Kumar | `arjun.kumar@trustvault.example` | `ArjunView@2026!` |
 
 **Note:** These are sample credentials. The accounts must be created and assigned the correct roles in the application before they can be used to log in.
 

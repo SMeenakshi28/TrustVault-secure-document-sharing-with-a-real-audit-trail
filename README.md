@@ -100,8 +100,8 @@ The backend is FastAPI, so interactive documentation is generated automatically:
 
 | Resource | Local | Deployed |
 |----------|-------|----------|
-| Swagger UI | [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) | `<BACKEND_DEPLOYMENT_URL>/docs` |
-| OpenAPI schema | [http://127.0.0.1:8000/openapi.json](http://127.0.0.1:8000/openapi.json) | `<BACKEND_DEPLOYMENT_URL>/openapi.json` |
+| Swagger UI | [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) | `trustvault-backend-api.vercel.app/docs` |
+| OpenAPI schema | [http://127.0.0.1:8000/openapi.json](http://127.0.0.1:8000/openapi.json) | `trustvault-backend-api.vercel.app/openapi.json` |
 
 **How to use it:** start the backend, open `/docs`, call `POST /auth/login`, copy the `access_token` from the response, click **Authorize**, paste the token, and try the protected endpoints.
 

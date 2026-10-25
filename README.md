@@ -100,8 +100,8 @@ The backend is FastAPI, so interactive documentation is generated automatically:
 
 | Resource | Local | Deployed |
 |----------|-------|----------|
-| Swagger UI | [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) | `trustvault-backend-api.vercel.app/docs` |
-| OpenAPI schema | [http://127.0.0.1:8000/openapi.json](http://127.0.0.1:8000/openapi.json) | `trustvault-backend-api.vercel.app/openapi.json` |
+| Swagger UI | [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) | [trustvault-backend-api.vercel.app/docs](trustvault-backend-api.vercel.app/docs) |
+| OpenAPI schema | [http://127.0.0.1:8000/openapi.json](http://127.0.0.1:8000/openapi.json) | [trustvault-backend-api.vercel.app/openapi.json](trustvault-backend-api.vercel.app/openapi.json) |
 
 **How to use it:** start the backend, open `/docs`, call `POST /auth/login`, copy the `access_token` from the response, click **Authorize**, paste the token, and try the protected endpoints.
 
@@ -313,10 +313,10 @@ At the time this README was written, the suite was run on a fresh install and re
 
 | Item | Link |
 |------|------|
-| **Live Frontend** | `sakala-meenakshi-trustvault.vercel.app` |
-| **Backend API** | `trustvault-backend-api.vercel.app` |
-| **Interactive API Documentation** | `trustvault-backend-api.vercel.app/docs` |
-| **GitHub Repository** | `https://github.com/SMeenakshi28/TrustVault-secure-document-sharing-with-a-real-audit-trail` |
+| **Live Frontend** | [sakala-meenakshi-trustvault.vercel.app](sakala-meenakshi-trustvault.vercel.app) |
+| **Backend API** | [trustvault-backend-api.vercel.app](trustvault-backend-api.vercel.app) |
+| **Interactive API Documentation** | [trustvault-backend-api.vercel.app/docs](trustvault-backend-api.vercel.app/docs) |
+| **GitHub Repository** | [https://github.com/SMeenakshi28/TrustVault-secure-document-sharing-with-a-real-audit-trail](https://github.com/SMeenakshi28/TrustVault-secure-document-sharing-with-a-real-audit-trail) |
 
 Both the frontend and backend are intended to be deployed as separate Vercel projects. Configuration found in the repository:
 
